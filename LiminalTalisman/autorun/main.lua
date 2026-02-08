@@ -6,6 +6,8 @@ local core = require("LiminalCore.models.CoreModels")
 local language = core.Language
 local quest_state_params = core.QuestStateParams
 
+local log = require("LiminalCore.utils.log")
+
 local model = require("models.talisman_models")
 local qualifying_quest_list = model.QualifyingQuestList
 local melding_name = model.MeldingName
@@ -22,21 +24,17 @@ local ticket = model.Ticket
 local GIVE_TALISMAN = false
 local quest_params = {}
 
----@return void
-local function load_config()
-	local config_file = json.load_file(config_path)
-	if config_file then
-		config = config_file
-	else
-		config = {
-			max_deterministic_melding_method = melding_name.NONE,
-			max_random_melding_method = melding_name.NONE,
-			hunter_rank = 1,
-			master_rank = 1,
-		}
-	end
-end
+local config_path = 'liminal_decorations.json'
+local config_default_values = {
+    hunter_rank: 1,
+    master_rank: 1,
+    max_deterministic_melding_method: MeldingName.NONE,
+    max_random_melding_method: MeldingName.NONE,
+}
+local config = require('LiminalCore.utils.config')
+config.load_or_create(config_path, config_default_values)
 
+---@return void
 ---@return TalismanReward
 local function default_talisman_reward()
 	return {
@@ -54,19 +52,6 @@ end
 
 -- gross
 local talisman_reward = default_talisman_reward()
-
----@return void
-local function write_config()
-	json.dump_file(config_path, config)
-end
-
----@return void
-local function update_config(updates)
-	for k, v in pairs(updates) do
-		config[k] = v
-	end
-	write_config()
-end
 
 -- init managers
 local quest_manager, facility_manager, enemy_manager, message_manager
