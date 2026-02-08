@@ -1,5 +1,8 @@
 local dmodel = {}
 
+local core = require('LiminalCore.models.core_models')
+local quest = require('LiminalCore.utils.quest')
+
 dmodel.Decorations = {
   [1] = 'Attack Jewel',
   [2] = 'Challenger Jewel',
@@ -293,19 +296,19 @@ dmodel.UnluckyDecorations = {
 }
 
 dmodel.ChatHeader = {
-  [dmodel.RankType.LOW] = {
+  [quest.Rank.LOW] = {
     'Low Rank Rewards:\n',
   },
-  [dmodel.RankType.LOW] = {
+  [quest.Rank.HIGH] = {
     'High Rank Rewards:\n',
   },
-  [dmodel.RankType.LOW] = {
+  [quest.Rank.MASTER] = {
     'Master Rank Rewards:\n',
   },
 }
 
 dmodel.DecorationsByRank = {
-  [dmodel.RankType.LOW] = {
+  [quest.Rank.LOW] = {
     { name = 'Carver Jewel', mh_index = 95 },
     { name = 'Hungerless Jewel', mh_index = 96 },
     { name = 'Furor Jewel', mh_index = 4 },
@@ -339,7 +342,7 @@ dmodel.DecorationsByRank = {
     { name = 'Counter Jewel', mh_index = 106 },
   },
 
-  [dmodel.RankType.HIGH] = {
+  [quest.Rank.HIGH] = {
     { name = 'Blaze Jewel+', mh_index = 125 },
     { name = 'Stream Jewel+', mh_index = 128 },
     { name = 'Hard Stream Jewel+', mh_index = 130 },
@@ -411,7 +414,7 @@ dmodel.DecorationsByRank = {
     { name = 'Bomber Jewel', mh_index = 86 },
   },
 
-  [dmodel.RankType.MASTER] = {
+  [quest.Rank.MASTER] = {
     { name = 'Attack Jewel', mh_index = 1 },
     { name = 'Challenger Jewel', mh_index = 2 },
     { name = 'Crisis Jewel', mh_index = 5 },
@@ -553,13 +556,13 @@ dmodel.DecorationsByRank = {
 }
 
 dmodel.RampageDecorationsByRank = {
-  [dmodel.RankType.LOW] = {
+  [quest.Rank.LOW] = {
     { name = 'Doot Range Jewel', mh_index = 6 },
     { name = 'Small Monster Jewel', mh_index = 13 },
     { name = 'Rally Jewel', mh_index = 25 },
     { name = 'Spiritbird Jewel', mh_index = 26 },
   },
-  [dmodel.RankType.HIGH] = {
+  [quest.Rank.HIGH] = {
     { name = 'Brutal Jewel', mh_index = 1 },
     { name = 'Defense Edge Jewel', mh_index = 3 },
     { name = 'Anti-Wyvern Jewel', mh_index = 10 },
@@ -574,7 +577,7 @@ dmodel.RampageDecorationsByRank = {
     { name = 'Wirebug Jewel', mh_index = 30 },
     { name = 'Growth Jewel', mh_index = 31 },
   },
-  [dmodel.RankType.MASTER] = {
+  [quest.Rank.MASTER] = {
     { name = 'Wyrmstake Jewel', mh_index = 27 },
     { name = 'Defense Master Jewel', mh_index = 4 },
     { name = 'Switcher Jewel', mh_index = 7 },
@@ -653,8 +656,8 @@ dmodel.RampageDecorations = {
 
 ---@enum DecorationCategory
 dmodel.DecorationCategory = {
-  RAMPAGE = 'RAMPAGE',
   NORMAL = 'NORMAL',
+  RAMPAGE = 'RAMPAGE',
 }
 
 dmodel.DecorationTableByRank = {
@@ -668,8 +671,8 @@ dmodel.DecorationGamblingCategory = {
   [dmodel.DecorationCategory.RAMPAGE] = 1,
 }
 
-dmodel.RankTypeToDecorationCategoryOdds = {
-  [dmodel.RankType.LOW] = {
+dmodel.RankToDecorationCategoryOdds = {
+  [quest.Rank.LOW] = {
     [dmodel.DecorationCategory.NORMAL] = {
       min = 1,
       max = 6,
@@ -681,7 +684,7 @@ dmodel.RankTypeToDecorationCategoryOdds = {
       chance = 5,
     },
   },
-  [dmodel.RankType.HIGH] = {
+  [quest.Rank.HIGH] = {
     [dmodel.DecorationCategory.NORMAL] = {
       min = 2,
       max = 7,
@@ -693,7 +696,7 @@ dmodel.RankTypeToDecorationCategoryOdds = {
       chance = 5,
     },
   },
-  [dmodel.RankType.MASTER] = {
+  [quest.Rank.MASTER] = {
     [dmodel.DecorationCategory.NORMAL] = {
       min = 3,
       max = 8,

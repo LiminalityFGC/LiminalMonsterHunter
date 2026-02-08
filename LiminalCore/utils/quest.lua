@@ -7,9 +7,9 @@ quest.Rank = {
 }
 
 quest.RankArray = {
-  [0] = quest.QuestRank.LOW,
-  [1] = quest.QuestRank.HIGH,
-  [2] = quest.QuestRank.MASTER,
+  [0] = quest.Rank.LOW,
+  [1] = quest.Rank.HIGH,
+  [2] = quest.Rank.MASTER,
 }
 
 ---@enum QuestStateParams
@@ -71,3 +71,5 @@ end
 function is_quest_clear(progress_quest_manager)
   return progress_quest_manager:call('isClear', quest_id)
 end
+
+return quest

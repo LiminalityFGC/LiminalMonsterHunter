@@ -14,7 +14,7 @@ function chat.new(chat_manager)
   ---@param location DisplayWindow
   ---@param message string
   function instance.print(location, message)
-    chat_manager:call('reqAddChatInfomation', location, message)
+    chat_manager:call('reqAddChatInfomation', message, location)
   end
 
   return instance
@@ -31,3 +31,5 @@ end
 function chat.invalidate_cache()
   cached_instance = nil
 end
+
+return chat

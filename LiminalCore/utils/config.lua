@@ -28,9 +28,12 @@ end
 function config.load(config_path)
   return json.load_file(config_path)
 end
+
 ---@param config_path string
 ---@param config_values table<string, any>
 ---@return void
 function config.write(config_path, config_values)
   json.dump_file(config_path, config_values)
 end
+
+return config
