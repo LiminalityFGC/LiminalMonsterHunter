@@ -1,398 +1,290 @@
 math.randomseed(os.time())
 
--- todos -> Cleanup required for next stage of discovery
--- Implement logging for all generation parameters, how many talisman, which table, odds, quantity, etc
--- The generation logic is awful, we should to be able to do all odds before all generation.  I want to be able to hand a table to the decoration generation function with references to all tables already.  The generation function should control talisman generation, not finding the proper configuration for the parameters.
--- All variables sitting outside of tables should be grouped into tables
--- Move all configurable values to the GUI and check them before each cycle
--- The chat creation is hardly legible, experiment with different menu types
--- (making sure to lock the user out of modifying values mid talisman generation)
-
--- Let's start with the generation logic
--- Adding logging as we go.
-
--- Core Models
-local core = require("LiminalCore.models.CoreModels")
-local quest_state_params = core.QuestStateParams
+local quest = require('LiminalCore.utils.quest')
+local core = require('LiminalCore.models.CoreModels')
+local log = require('LiminalCore.utils.log')
+local player = require('LiminalCore.utils.player')
+local chat_session = require('LiminalCore.utils.chat')
 
 -- Decorations Models
-local model = require("models.decoration_models")
-local decorations_by_rank = model.DecorationsByRank
-local rampage_decorations_by_rank = model.RampageDecorationsByRank
-local rank_type = model.RankType
+local model = require('models.decoration_models')
 local decoration_category = model.DecorationCategory
-local rank_type_to_odds = model.RankTypeToDecorationCategoryOdds
 
--- GLOBAL VARIABLES (move into a table or something idiot)
-local IS_RAMPAGE = false
-local quest_params = {}
-local quest_rank
-local chat_headers = model.ChatHeader
+-- Config
+local config_default_values = {
+    hunter_rank: 1,
+    master_rank: 1,
+}
 
--- LOGGING
-local log_path = "liminal_deco_logs.txt"
+local config_path = 'liminal_decorations.json'
+local configuration = require('LiminalCore.utils.config')
+local config = configuration.load_or_create(config_path, config_default_values)
 
----@return string
-local function build_log_time()
-	local now = os.time()
-	return "[" .. now .. "] "
-end
+-- Globals
+local current_quest = nil
+local current_chat = nil
 
----@param text string
----@return string
-local function build_log_message(text)
-	return build_log_time() .. text
-end
-
----@param log_path string
----@return void
-local function init_log_file(log_path)
-	local log_file = io.open(log_path, "r")
-	if log_file ~= nil then
-		log_file = io.open(log_path, "w")
-		log_file:write(build_log_message("Log file created"))
-	end
-	log_file:close()
-end
-
----@param message string
----@return void
-local function log_info(message)
-	local log_file = io.open(log_path, "a")
-	log_file:write(build_log_message(message))
-	log_file:close()
-end
-
-init_log_file()
-
--- CONFIG
-
-local config_path = "liminal_decorations.json"
-
----@return void
-local function load_config()
-	local config_file = json.load_file(config_path)
-	if config_file then
-		config = config_file
-	else
-		config = {}
-	end
-end
-
----@return void
-local function write_config()
-	json.dump_file(config_path, config)
-end
-
-load_config()
-
--- SINGLETONS
+-- Singletons 
 local quest_manager, facility_manager, enemy_manager, message_manager, chat_manager
 local player_manager, progress_manager, progress_quest_manager, data_manager
 
----@return void
+---@return nil 
 local function init_singletons()
-	if not quest_manager then
-		quest_manager = sdk.get_managed_singleton("snow.QuestManager")
-	end
+  if not quest_manager then
+    quest_manager = sdk.get_managed_singleton('snow.QuestManager')
+  end
 
-	if not chat_manager then
-		chat_manager = sdk.get_managed_singleton("snow.gui.ChatManager")
-	end
+  if not chat_manager then
+    chat_manager = sdk.get_managed_singleton('snow.gui.ChatManager')
+  end
 
-	if not facility_manager then
-		facility_manager = sdk.get_managed_singleton("snow.data.FacilityDataManager")
-	end
+  if not facility_manager then
+    facility_manager = sdk.get_managed_singleton('snow.data.FacilityDataManager')
+  end
 
-	if not enemy_manager then
-		enemy_manager = sdk.get_managed_singleton("snow.enemy.EnemyManager")
-	end
+  if not enemy_manager then
+    enemy_manager = sdk.get_managed_singleton('snow.enemy.EnemyManager')
+  end
 
-	if not message_manager then
-		message_manager = sdk.get_managed_singleton("snow.gui.MessageManager")
-	end
+  if not message_manager then
+    message_manager = sdk.get_managed_singleton('snow.gui.MessageManager')
+  end
 
-	if not player_manager then
-		player_manager = sdk.get_managed_singleton("snow.player.PlayerManager")
-	end
+  if not player_manager then
+    player_manager = sdk.get_managed_singleton('snow.player.PlayerManager')
+  end
 
-	if not data_manager then
-		data_manager = sdk.get_managed_singleton("snow.data.DataManager")
-	end
+  if not data_manager then
+    data_manager = sdk.get_managed_singleton('snow.data.DataManager')
+  end
 
-	if not progress_manager then
-		progress_manager = sdk.get_managed_singleton("snow.progress.ProgressManager")
-	end
+  if not progress_manager then
+    progress_manager = sdk.get_managed_singleton('snow.progress.ProgressManager')
+  end
 
-	if not progress_quest_manager then
-		progress_quest_manager = sdk.get_managed_singleton("snow.progress.quest.ProgressQuestManager")
-	end
+  if not progress_quest_manager then
+    progress_quest_manager = sdk.get_managed_singleton('snow.progress.quest.ProgressQuestManager')
+  end
 end
 
--- VARIOUS TABLES (make sane you idiot)
 
-local function default_decoration_rewards()
-	return {
-		total_normal_rolls = 0,
-		total_rampage_rolls = 0,
-	}
-end
-
-local decoration_rewards = default_decoration_rewards()
-
-local chat_messages = {
-	[decoration_category.NORMAL] = { [0] = "Normal Decorations found: " },
-	[decoration_category.RAMPAGE] = { [0] = "Rampage Decorations found: " },
-}
-
-local check_quest_rank = {
-	[0] = rank_type.LOW,
-	[1] = rank_type.HIGH,
-	[2] = rank_type.MASTER,
-}
-
-local function get_quest_rank()
-	if not quest_params then
-		return 0
-	end
-	quest_rank = check_quest_rank[quest_params.quest_rank_level]
-end
-
----@return QuestParams
-local function init_quest_params()
-	quest_params = {}
-	for key, value in pairs(quest_state_params) do
-		quest_params[key] = quest_manager:call(value)
-	end
-end
-
----@return boolean
-local function is_qualifying_quest()
-	return (not quest_params.is_tour_quest and not quest_params.is_zako_target_quest)
-end
-
----@param cur_chance float | integer
 ---@param category DecorationCategory
----@return void
-local function roll_for(category, cur_chance)
-	if cur_chance == 0 then
-		cur_chance = rank_type_to_odds[quest_rank][category]
-	end
+---@param chance integer
+---@return boolean 
+local function roll_for(category, chance)
 
-	local progress_multiplier = 1 + (config.hunter_rank / 200) + (config.master_rank / 200)
+  local progress_multiplier = 1 + (config.hunter_rank / 200) + (config.master_rank / 200)
+  local out_of = math.random(100)
 
-	local chance
-	local out_of
+  local category_functions = {
+    [decoration_category.NORMAL] = function()
+      chance = chance * progress_multiplier
+      return chance > out_of
+    end,
+    [decoration_category.RAMPAGE] = function()
+      chance = chance * progress_multiplier
+      return chance > out_of
+    end,
+  }
 
-	local category_functions = {
-		[decoration_category.NORMAL] = function()
-			chance = cur_chance * progress_multiplier
-			out_of = math.random(100)
-			return chance > out_of
-		end,
-		[decoration_category.RAMPAGE] = function()
-			chance = cur_chance * progress_multiplier
-			out_of = math.random(100)
-			return chance > out_of
-		end,
-		["IS_RAMPAGE"] = function()
-			chance = cur_chance * progress_multiplier
-			out_of = math.random(100)
-			return chance > out_of
-		end,
-	}
-
-	return category_functions[category]()
+  return category_functions[category]()
 end
+
 
 ---@param gambling_category DecorationCategory
----@param min integer
----@param max integer
-local function roll_for_many(gambling_category, min, max)
-	if max - min <= 0 then
-		return min
-	end
+---@param odds table 
+---@return quantity integer
+local function roll_for_many(gambling_category, odds)
 
-	local collector = min
+  local quantity = odds.min
+  local rolls = odds.max - odds.min
 
-	for i = 1, max do
-		if roll_for(gambling_category, 0) then
-			collector = collector + 1
-		end
-	end
+  for i = 1, rolls do
+    if roll_for(gambling_category, odds.chance) then
+      quantity = quantity + 1
+    end
+  end
 
-	return collector
+  return quantity 
 end
 
----@return void
-local function dealer()
-	local normal = rank_type_to_odds[quest_rank][decoration_category.NORMAL]
-	local rampage = rank_type_to_odds[quest_rank][decoration_category.RAMPAGE]
+---@return nil 
+local function get_gambling_quantity()
 
-	decoration_rewards.total_normal_rolls = 0
-	decoration_rewards.total_rampage_rolls = 0
+  local generation_table = {}
+  local quest_rank = current_quest.get_rank()
 
-	local normal_min = 1
-	local normal_max = normal.max_additional_rolls + normal_min
+  ---@param category DecorationCategory
+  ---@return quantity integer
+  local function gamble(category)
+    local odds = model.RankTypeToDecorationCategoryOdds[quest_rank][category]
+    return roll_for_many(category, odds)
+  end
 
-	decoration_rewards.total_normal_rolls = roll_for_many(decoration_category.NORMAL, normal_min, normal_max)
+  for _, category in pairs(model.DecorationCategory) do
+    generation_table[category].quantity = gamble(category)
+  end
 
-	IS_RAMPAGE = roll_for("IS_RAMPAGE", rampage.base_chance)
-
-	if not IS_RAMPAGE then
-		return
-	end
-
-	local rampage_min = 0
-	local rampage_max = rampage.max_additional_rolls + rampage_min
-
-	decoration_rewards.total_rampage_rolls = roll_for_many(decoration_category.rampage, rampage_min, rampage_max)
-
-	if quest_rank == rank_type.HIGH then
-		decoration_rewards.catchup_quest_rank = rank_type.LOW
-	end
-
-	if quest_rank == rank_type.MASTER then
-		decoration_rewards.catchup_quest_rank = rank_type.HIGH
-	end
+  return generation_table
 end
 
----@return hunter_rank integer
----@return master_rank integer
-local function get_player_rank()
-	local hunter_rank = math.max(progress_manager:call("get_HunterRank"), 1)
-	local master_rank = math.max(progress_manager:call("get_MasterRank"), 1)
-
-	return hunter_rank, master_rank
-end
-
----@return void
+---@return nil 
 local function update_player_progress()
-	config.hunter_rank, config.master_rank = get_player_rank()
-	write_config()
+  config.hunter_rank, config.master_rank = player.get_player_rank()
+  config.write(config_path, configuration)
 end
 
----@param deco_category DecorationCategory
+
+---@param category DecorationCategory
 ---@param quantity integer
----@param qrank RankType
----@return void
-local function roll_for_decorations(deco_category, quantity, qrank)
-	if not quantity then
-		return
-	end
+---@param quest_rank RankType
+---@return nil 
+local function roll_for_decorations(category, quantity, quest_rank)
 
-	local rank = qrank or quest_rank
+  if not quantity then
+    return
+  end
 
-	local decoration_category_table = deco_category == decoration_category.NORMAL and decorations_by_rank
-		or rampage_decorations_by_rank
+  local decoration_values= {}
+  local decoration_table_by_rank =  model.DecorationTableByRank[category]
+  local decoration_table = decoration_table_by_rank[quest_rank]
 
-	local decoration_table = decoration_category_table[rank]
+  for i = 1, quantity do
+    local decoration_id = math.random(1, #decoration_table)
+    table.insert(decoration_values.ids, decoration_id)
+    table.insert(decoration_values.mh_index, decoration_table[decoration_id].mh_index)
+    table.insert(decoration_values.name, decoration_table[decoration_id].name)
+  end
 
-	local item_box = data_manager:call("getDecorationsBox()")
-
-	local messages = {}
-
-	table.insert(messages[deco_category], tostring(quantity) .. "\n")
-
-	local pair_buffer = {}
-
-	for i = 1, quantity do
-		local decoration_id = math.random(1, #decoration_table)
-		local decoration_message = tostring(decoration_table[decoration_id].name)
-
-		data_manager:call("getDecorationsList()")
-		item_box:call(
-			"tryAddGameItem(snow.equip.DecorationsId, System.Int32)",
-			decoration_table[decoration_id].mh_index,
-			1
-		)
-		table.insert(pair_buffer, decoration_message)
-
-		if #pair_buffer == 2 then
-			table.insert(messages[deco_category], "-" .. pair_buffer[1] .. ", " .. pair_buffer[2] .. "\n")
-			pair_buffer = {}
-		end
-	end
-
-	if pair_buffer == 1 then
-		table.insert(messages[deco_category], "-" .. pair_buffer[1] .. "\n")
-	end
-
-	chat_messages[deco_category] = messages[deco_category]
+  return decoration_values 
 end
 
----@return void
+
+---@param decoration_indexes table<integer>
+---@return nil
+function add_decorations_to_inventory(decoration_indexes)
+  local item_box = data_manager:call('getDecorationsBox()')
+
+  for i = 1, #decoration_indexes do
+    data_manager:call('getDecorationsList()')
+    item_box:call('tryAddGameItem(snow.equip.DecorationsId, System.Int32)', decoration_indexes[i], 1)
+  end
+end
+
+
+---@param decoration_values table 
+---@return nil
+function generate_chat_messages(decoration_values) 
+  for _, category in pairs(model.DecorationCategory) do
+    generate_chat_message(category, decoration_values)
+  end
+end
+
+
+---@param category DecorationCategory 
+---@param decoration_values table 
+---@return nil
+function generate_chat_message(category, decoration_values)
+
+  local quantity_headers = {
+    [decoration_category.NORMAL] = { [0] = 'Normal Decorations found: ' },
+    [decoration_category.RAMPAGE] = { [0] = 'Rampage Decorations found: ' },
+  }
+
+  local category_message = {}
+  local pair_buffer = {}
+
+  table.insert(category_message[category], quantity_headers[category])
+  table.insert(category_message[category], tostring(quantity) .. '\n')
+
+  for i = 1, #decoration_values[category].ids do
+    table.insert(pair_buffer, decoration_values[category].name[i])
+
+    if #pair_buffer == 2 then
+      table.insert(category_message[category], '-' .. pair_buffer[1] .. ', ' .. pair_buffer[2] .. '\n')
+
+      pair_buffer = {}
+    end
+  end
+
+  if pair_buffer == 1 then
+    table.insert(category_message[category], '-' .. pair_buffer[1] .. '\n')
+  end
+
+  chat_messages[category] = category_message[category]
+end
+
+
+---@return nil 
 local function create_chat()
-	if decoration_rewards.total_normal_rolls > 0 then
-		chat_manager:call(
-			"reqAddChatInfomation",
-			chat_headers[quest_rank] .. "<COL YELLOW>-" .. table.concat(chat_messages[decoration_category.NORMAL]),
-			2289944406
-		)
-	end
-
-	if decoration_rewards.total_rampage_rolls > 0 then
-		chat_manager:call(
-			"reqAddChatInfomation",
-			chat_headers[quest_rank] .. "<COL PURPLE>-" .. table.concat(chat_messages[decoration_category.RAMPAGE]),
-			2289944406
-		)
-	end
+  for _, category in pairs(model.DecorationCategory) do
+    if chat_messages[category] ~= nil then
+      local message = table.concat(chat_messages[category])
+      current_chat.print(chat.DisplayWindow.RIGHT_NOTIFICATION, message)
+    end
+  end
 end
 
----@return void
-local function add_decoration_to_inv()
-	dealer()
 
-	local normal_talisman_quantity = math.max(1, decoration_rewards.total_normal_rolls)
-		* rank_type_to_odds[quest_rank]["NORMAL"].base_quantity
+---@param quantity_table table
+---@return decorations table 
+local function get_decoration_generation_params(quantity_table)
 
-	local rampage_talisman_quantity = math.max(0, decoration_rewards.total_rampage_rolls)
-		* rank_type_to_odds[quest_rank]["RAMPAGE"].base_quantity
+  local decorations = {}
+  local quest_rank = current_quest.get_rank()
 
-	roll_for_decorations(decoration_category.NORMAL, normal_talisman_quantity)
+  for _, category in pairs(model.DecorationCategory) do
 
-	roll_for_decorations(decoration_category.RAMPAGE, rampage_talisman_quantity)
+    local quantity = quantity_table[category].quantity
+    decorations[category] = roll_for_decorations(category, quantity, quest_rank)
 
-	if decoration_rewards.catchup_quest_rank == rank_type.HIGH then
-		roll_for_decorations(decoration_category.NORMAL, 3, rank_type.HIGH)
-		roll_for_decorations(decoration_category.NORMAL, 3, rank_type.LOW)
-	end
+    if quest_rank == RankType.MASTER then
+      roll_for_decorations(model.DecorationCategory.NORMAL, 2, RankType.HIGH_RANK)
+      roll_for_decorations(model.DecorationCategory.NORMAL, 2, RankType.LOW_RANK)
+    end
 
-	if decoration_rewards.catchup_quest_rank == rank_type.LOW then
-		roll_for_decorations(decoration_category.NORMAL, 3, rank_type.LOW)
-	end
+    if quest_rank == RankType.HIGH_RANK then
+      roll_for_decorations(model.DecorationCategory.NORMAL, 3, RankType.LOW_RANK)
+    end
+  end
+
+  return decorations
 end
+
+
+---@return nil
+local function generate_and_insert_decorations()
+  local quantity_table = get_gambling_quantity()
+  local decorations_table = get_decoration_generation_params(quantity_table)
+  add_decorations_to_inventory(decorations_table)
+end
+
 
 ---@param retval any
----@return void
+---@return nil 
 local function check_rewards_on_quest_complete(retval)
-	-- Init everything
-	init_singletons()
-	init_quest_params()
 
-	-- Build Generation Params
-	-- this should result in a table of configuration passed into the add_deco_to_inv()
-	quest_rank = get_quest_rank()
+  init_singletons()
 
-	if not is_qualifying_quest() then
-		return
-	end
+  current_quest = quest.get_instance(quest_manager) 
+  current_chat = chat_session.get_instance(chat_manager)
 
-	update_player_progress()
+  if not current_quest.is_qualifying() then
+    return
+  end
 
-	-- Generate Talisman
-	add_decoration_to_inv()
+  update_player_progress()
+  generate_and_insert_decorations()
+  generate_chat_messages()
+  create_chat()
 
-	create_chat()
+  current_quest.invalidate_cache()
+  current_chat.invalidate_cache()
 
-	chat_messages = {}
-	decoration_rewards = {}
+  current_quest = nil
+  current_chat = nil
 end
 
 -- Hooks
-sdk.hook(
-	sdk.find_type_definition("snow.QuestManager"):get_method("setQuestClear"),
-	function(args) end,
-	check_rewards_on_quest_complete
-)
+sdk.hook(sdk.find_type_definition('snow.QuestManager'):get_method('setQuestClear'), function(args) end, check_rewards_on_quest_complete)
+

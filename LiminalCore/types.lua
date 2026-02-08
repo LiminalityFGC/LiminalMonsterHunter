@@ -1,13 +1,4 @@
 
----@class QuestParams
----@field quest_rank_level integer
----@field quest_ex_level integer
----@field quest_level integer
----@field is_mystery boolean
----@field is_random_mystery boolean
----@field is_tour_quest boolean
----@field is_zako_target_quest boolean
-
 ---@class TalismanReward
 ---@field total_talisman_rolls integer
 ---@field skill_id integer
