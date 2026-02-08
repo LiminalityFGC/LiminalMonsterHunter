@@ -145,7 +145,7 @@ local function roll_for_decorations(category, quantity, quest_rank)
     return
   end
 
-  local decoration_values= {}
+  local decoration_values = {}
   local decoration_table_by_rank =  model.DecorationTableByRank[category]
   local decoration_table = decoration_table_by_rank[quest_rank]
 
