@@ -666,7 +666,6 @@ dmodel.DecorationTableByRank = {
 dmodel.DecorationGamblingCategory = {
   [dmodel.DecorationCategory.NORMAL] = 0,
   [dmodel.DecorationCategory.RAMPAGE] = 1,
-  ['IS_RAMPAGE'] = 2,
 }
 
 dmodel.RankTypeToDecorationCategoryOdds = {
