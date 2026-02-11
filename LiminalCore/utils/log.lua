@@ -13,8 +13,8 @@ function log.build_message(text)
 end
 
 ---@param log_path string
----@return void
-function log.create(log_path)
+---@return nil
+function log.create_file(log_path)
   log_file = io.open(log_path, 'w')
   log.write(log_path)
   log_file:close()
@@ -26,12 +26,12 @@ function log.init(log_path)
   local log_file = io.open(log_path, 'r')
 
   if log_file ~= nil then
-    log.create(log_path)
+    log.create_file(log_path)
   end
 end
 
 ---@param message string
----@return void
+---@return nil
 function log.info(message)
   local log_file = io.open(log_path, 'a')
   log_file:write(log.build_message(message))
