@@ -48,7 +48,7 @@ function quest.new(quest_manager)
 
   ---@return table
   function instance.get_values()
-    return quest_value
+    return quest_values
   end
 
   return instance
